@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
 
 type Counts = { [key: number]: number };
 
@@ -73,6 +74,8 @@ export default function Home() {
   const { toast } = useToast();
   const [counts, setCounts] = useState<Counts>({});
   const [comment, setComment] = useState("");
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const handleCountChange = (value: number, count: number) => {
@@ -82,6 +85,8 @@ export default function Home() {
   const handleReset = () => {
     setCounts({});
     setComment("");
+    setTitle("");
+    setDate(new Date().toISOString().slice(0, 10));
     toast({
       title: "Återställd",
       description: "Alla fält har rensats.",
@@ -104,6 +109,8 @@ export default function Home() {
     const exportData = {
       version: 1,
       createdAt: new Date().toISOString(),
+      title,
+      date,
       counts,
       comment,
     };
@@ -113,8 +120,8 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const date = new Date().toISOString().slice(0, 10);
-    a.download = `svensk-kassa-${date}.json`;
+    const dateStr = new Date().toISOString().slice(0, 10);
+    a.download = `svensk-kassa-${dateStr}.json`;
     a.click();
     URL.revokeObjectURL(url);
     toast({
@@ -136,8 +143,10 @@ export default function Home() {
         }
         const data = JSON.parse(result);
         if (data && typeof data.counts === "object") {
-          setCounts(data.counts);
+          setCounts(data.counts || {});
           setComment(data.comment || "");
+          setTitle(data.title || "");
+          setDate(data.date || new Date().toISOString().slice(0, 10));
           toast({
             title: "Importerad!",
             description: "Kassaberäkning har laddats.",
@@ -199,6 +208,29 @@ export default function Home() {
       </header>
 
       <main className="flex-grow container mx-auto p-4 space-y-6 pb-40">
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="title">Titel</Label>
+              <Input
+                id="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="T.ex. Dagskassa"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="date">Datum</Label>
+              <Input
+                id="date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="font-headline">Mynt</CardTitle>
