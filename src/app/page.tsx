@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { coins, notes, type Denomination } from "@/lib/denominations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { DenominationIcon } from "@/components/denomination-icon";
 import {
+  ClipboardCopy,
   Download,
   MoreVertical,
   RotateCcw,
@@ -19,11 +20,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 
 type Counts = { [key: number]: number };
+
+const LOCAL_STORAGE_KEY = "svensk-kassa-state";
 
 const formatter = new Intl.NumberFormat("sv-SE", {
   style: "currency",
@@ -76,7 +80,41 @@ export default function Home() {
   const [comment, setComment] = useState("");
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [isLoaded, setIsLoaded] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedState = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (savedState) {
+        const data = JSON.parse(savedState);
+        setCounts(data.counts || {});
+        setComment(data.comment || "");
+        setTitle(data.title || "");
+        setDate(data.date || new Date().toISOString().slice(0, 10));
+      }
+    } catch (error) {
+      console.error("Failed to load state from localStorage", error);
+    }
+    setIsLoaded(true);
+  }, []);
+
+  // Save to localStorage on change
+  useEffect(() => {
+    if (!isLoaded) return;
+    try {
+      const stateToSave = {
+        counts,
+        comment,
+        title,
+        date,
+      };
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+    } catch (error) {
+      console.error("Failed to save state to localStorage", error);
+    }
+  }, [counts, comment, title, date, isLoaded]);
 
   const handleCountChange = (value: number, count: number) => {
     setCounts((prev) => ({ ...prev, [value]: Math.max(0, count) }));
@@ -112,6 +150,11 @@ export default function Home() {
       title,
       date,
       counts,
+      totals: {
+        coinTotal,
+        noteTotal,
+        grandTotal,
+      },
       comment,
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -121,14 +164,58 @@ export default function Home() {
     const a = document.createElement("a");
     a.href = url;
     const dateStr = new Date().toISOString().slice(0, 10);
-    a.download = `svensk-kassa-${dateStr}.json`;
+    a.download = `svensk-kassa-${title.replace(/ /g,"_") || dateStr}.json`;
     a.click();
     URL.revokeObjectURL(url);
     toast({
       title: "Exporterad!",
-      description: "Din kassaberäkning har sparats.",
+      description: "Din kassaberäkning har sparats som en JSON-fil.",
     });
   };
+
+  const handleCopyToClipboard = () => {
+    let report = `## 🧾 ${title || "Kassaräkning"} - ${date}\n\n`;
+
+    report += "### 🪙 Mynt\n";
+    coins.forEach(d => {
+      const count = counts[d.value] || 0;
+      if (count > 0) {
+        report += `- **${d.label}:** ${count} st = ${formatter.format(count * d.value)}\n`;
+      }
+    });
+    report += `**Summa Mynt:** ${formatter.format(coinTotal)}\n\n`;
+
+    report += "### 💵 Sedlar\n";
+    notes.forEach(d => {
+      const count = counts[d.value] || 0;
+      if (count > 0) {
+        report += `- **${d.label}:** ${count} st = ${formatter.format(count * d.value)}\n`;
+      }
+    });
+    report += `**Summa Sedlar:** ${formatter.format(noteTotal)}\n\n`;
+
+    report += "---\n\n";
+    report += `### 💰 **Totalsumma: ${formatter.format(grandTotal)}**\n\n`;
+
+    if (comment) {
+      report += `**Kommentar:**\n${comment}\n`;
+    }
+
+    navigator.clipboard.writeText(report).then(() => {
+      toast({
+        title: "Kopierad!",
+        description: "Räkningen har kopierats till urklipp.",
+      });
+    }).catch(err => {
+      toast({
+        variant: "destructive",
+        title: "Kopiering misslyckades",
+        description: "Kunde inte kopiera till urklipp.",
+      });
+      console.error('Failed to copy text: ', err);
+    });
+  };
+
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -189,11 +276,15 @@ export default function Home() {
               <DropdownMenuItem onSelect={handleReset}>
                 <RotateCcw className="mr-2 h-4 w-4" /> Nollställ
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={handleCopyToClipboard}>
+                <ClipboardCopy className="mr-2 h-4 w-4" /> Kopiera som text
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => importFileRef.current?.click()}>
-                <Upload className="mr-2 h-4 w-4" /> Importera
+                <Upload className="mr-2 h-4 w-4" /> Importera (JSON)
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={handleExport}>
-                <Download className="mr-2 h-4 w-4" /> Exportera
+                <Download className="mr-2 h-4 w-4" /> Exportera (JSON)
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
